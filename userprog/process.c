@@ -278,6 +278,7 @@ process_exec (void *f_name) {
 
 	/* We first kill the current context */
 	process_cleanup ();
+	supplemental_page_table_init(&thread_current()->spt);
 
 	// Project 2-1. Pass args - parse
 	char *argv[30];
@@ -832,6 +833,22 @@ lazy_load_segment (struct page *page, void *aux) {
 	/* TODO: Load the segment from the file */
 	/* TODO: This called when the first page fault occurs on address VA. */
 	/* TODO: VA is available when calling this function. */
+	if (page == NULL)
+	    return false;
+	struct load_info *li = (struct load_info *)aux;
+    
+	// Load this page
+	if (li->page_read_bytes > 0)
+	    file_seek(li->file, li->ofs);
+		if (file_read(li->file, page->va, li->page_read_bytes) != (off_t)li->page_read_bytes) {
+			vm_dealloc_page(page);
+			free(li);
+			return false;
+		}
+	memset(page->va + li->page_read_bytes, 0, li->page_zero_bytes);  // ?
+    file_close(li->file);
+	free(li);
+	return true;
 }
 
 /* Loads a segment starting at offset OFS in FILE at address
@@ -854,7 +871,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 	ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
 	ASSERT (pg_ofs (upage) == 0);
 	ASSERT (ofs % PGSIZE == 0);
-
+    
+	off_t read_ofs = ofs;
 	while (read_bytes > 0 || zero_bytes > 0) {
 		/* Do calculate how to fill this page.
 		 * We will read PAGE_READ_BYTES bytes from FILE
@@ -863,32 +881,56 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 		size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
 		/* TODO: Set up aux to pass information to the lazy_load_segment. */
-		void *aux = NULL;
+		struct load_info *aux = malloc(sizeof(struct load_info));
+		aux->file = file_reopen(file);
+		aux->ofs = read_ofs;
+		aux->page_read_bytes = page_read_bytes;
+		aux->page_zero_bytes = page_zero_bytes;
 		if (!vm_alloc_page_with_initializer (VM_ANON, upage,
-					writable, lazy_load_segment, aux))
+					writable, lazy_load_segment, (void *)aux)) {
+			free(aux);
 			return false;
+		}
 
 		/* Advance. */
 		read_bytes -= page_read_bytes;
 		zero_bytes -= page_zero_bytes;
 		upage += PGSIZE;
+		read_ofs += PGSIZE;
 	}
 	return true;
 }
 
+#define WORD_ALIGN(addr) ((uint64_t)addr - ((uint64_t)addr/8)*8)
+
 /* Create a PAGE of stack at the USER_STACK. Return true on success. */
-static bool
+bool	//! spt copy에서 쓰려고 전역으로 변환
 setup_stack (struct intr_frame *if_) {
 	bool success = false;
-	void *stack_bottom = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
+	void *saved_sp = (void *) (((uint8_t *) USER_STACK) - PGSIZE);
 
 	/* TODO: Map the stack on stack_bottom and claim the page immediately.
 	 * TODO: If success, set the rsp accordingly.
 	 * TODO: You should mark the page is stack. */
 	/* TODO: Your code goes here */
+    //! ADD: setup_stack
+    // printf("========= in setup stack =============\n");
+	//! stack 영역인 page임을 MARK
+    if (vm_alloc_page(VM_ANON | VM_MARKER_0, saved_sp, 1))
+    {
 
+		success = vm_claim_page(saved_sp);
+		
+		if (success){
+			// printf("here??\n");
+			if_->rsp = USER_STACK;
+            thread_current()->saved_sp = saved_sp;
+		}
+
+    }
 	return success;
 }
+    //! END: setup_stack
 #endif /* VM */
 
 struct thread *get_child_with_pid(int pid)

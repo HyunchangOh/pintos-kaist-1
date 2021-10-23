@@ -16,6 +16,8 @@
 #include "threads/vaddr.h"
 #include "userprog/process.h"
 
+// PJT3
+#include "vm/file.h"
 
 void syscall_entry (void);
 void syscall_handler (struct intr_frame *);
@@ -42,6 +44,9 @@ int dup2(int oldfd, int newfd);
 
 tid_t fork (const char *thread_name, struct intr_frame *f);
 int exec (char *file_name);
+
+// PJT3
+static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset);
 
 // Project 2-4 File Descriptor
 static struct file *find_file_by_fd(int fd);
@@ -151,6 +156,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_DUP2:
 		f->R.rax = dup2(f->R.rdi, f->R.rsi);
 		break;
+	case SYS_MMAP:  // PJT3
+	    f->R.rax = (uint64_t)mmap((void *)f->R.rdi, (size_t)f->R.rsi, (int)f->R.rdx, (int)f->R.r10, (off_t)f->R.r8);
+		break;
 	default:
 		exit(-1);
 		break;
@@ -187,7 +195,7 @@ void check_address(const uint64_t *uaddr)
 유저 영역을 벗어난 영역일 경우 프로세스 종료(exit(-1)) */
 	/* ref) userprog/pagedir.c, threads/vaddr.h */
 	struct thread *cur = thread_current();
-	if (uaddr == NULL || !(is_user_vaddr(uaddr)) || pml4_get_page(cur->pml4, uaddr) == NULL)
+	if (uaddr == NULL || !(is_user_vaddr(uaddr)) || pml4e_walk(cur->pml4, uaddr, 0) == NULL)
 	{
 		exit(-1);
 	}
@@ -509,4 +517,29 @@ void remove_file_from_fdt(int fd)
 		return;
 
 	cur->fdTable[fd] = NULL;
+}
+
+static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset) {
+	// Handle all parameter error and pass it to do_mmap
+	if (addr == 0 || (!is_user_vaddr(addr)))
+	    return NULL;
+	if ((uint64_t)addr % PGSIZE != 0)
+	    return NULL;
+	if (offset % PGSIZE != 0)  // 오프셋도?
+	    return NULL;
+	if ((uint64_t)addr + length == 0)
+	    return NULL;
+	if (!is_user_vaddr((uint64_t)addr + length))
+	    return NULL;
+	for (uint64_t i = (uint64_t)addr; i < (uint64_t)addr + length; i += PGSIZE) {
+		if (spt_find_page(&thread_current()->spt, (void *)i) != NULL)
+		    return NULL;
+	}
+	struct file *file_obj = find_file_by_fd(fd);
+	if (file_obj == NULL)
+	    return NULL;
+	if (length == 0)
+	    return NULL;
+	
+	return do_mmap(addr, length, writable, file_obj, offset);
 }
