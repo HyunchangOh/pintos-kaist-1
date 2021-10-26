@@ -7,6 +7,11 @@
 #include "threads/vaddr.h"  // PJT3
 #include "threads/mmu.h"  // PJT3
 
+// PJT3
+static struct list frame_list;
+static struct list_elem *clock_elem;
+static struct lock clock_lock;
+
 static struct lock spt_kill_lock;  // PJT3
 
 /* Initializes the virtual memory subsystem by invoking each subsystem's
@@ -22,6 +27,11 @@ vm_init (void) {
 	/* DO NOT MODIFY UPPER LINES. */
 	/* TODO: Your code goes here. */
 	lock_init(&spt_kill_lock);  // PJT3
+
+	// PJT3
+	list_init(&frame_list);
+	clock_elem = NULL;
+	lock_init(&clock_lock);
 }
 
 /* Get the type of the page. This function is useful if you want to know the
@@ -106,13 +116,43 @@ spt_remove_page (struct supplemental_page_table *spt, struct page *page) {
 	return true;
 }
 
+static struct list_elem *list_next_cycle(struct list *lst, struct list_elem *elem) {
+	struct list_elem *cand_elem = elem;
+	if (cand_elem == list_back(lst))
+	    // Repeat from the front
+		cand_elem = list_front(lst);
+	else
+	    cand_elem = list_next(cand_elem);
+	return cand_elem;
+}
+
 /* Get the struct frame, that will be evicted. */
 static struct frame *
 vm_get_victim (void) {
-	struct frame *victim = NULL;
+	// struct frame *victim = NULL;
 	 /* TODO: The policy for eviction is up to you. */
+	struct frame *candidate = NULL;
+	struct thread *curr = thread_current();
 
-	return victim;
+    // This need careful syncronization, race between threads.
+	lock_acquire(&clock_lock);
+	struct list_elem *cand_elem = clock_elem;
+	if (cand_elem == NULL && !list_empty(&frame_list))
+	    cand_elem = list_front(&frame_list);
+	while (cand_elem != NULL) {
+		// Check frame accessed
+		candidate = list_entry(cand_elem, struct frame, elem);
+		if (!pml4_is_accessed(curr->pml4, candidate->page->va))
+		    break;  // Found!
+		pml4_set_accessed(curr->pml4, candidate->page->va, false);
+
+		cand_elem = list_next_cycle(&frame_list, cand_elem);
+	}
+	clock_elem = list_next_cycle(&frame_list, cand_elem);
+	list_remove(cand_elem);
+	lock_release(&clock_lock);
+
+	return candidate;
 }
 
 /* Evict one page and return the corresponding frame.
@@ -121,8 +161,20 @@ static struct frame *
 vm_evict_frame (void) {
 	struct frame *victim UNUSED = vm_get_victim ();
 	/* TODO: swap out the victim and return the evicted frame. */
+	if (victim == NULL)
+	    return NULL;
+	
+	// Swap out the victim and return the evicted frame.
+	struct page *page = victim->page;
+	bool swap_done = swap_out(page);
+	if (!swap_done)
+	    PANIC("Swap is full!\n");
 
-	return NULL;
+	// Clear frame
+	victim->page = NULL;
+	memset(victim->kva, 0, PGSIZE);
+
+	return victim;
 }
 
 /* palloc() and get frame. If there is no available page, evict the page
@@ -135,6 +187,12 @@ vm_get_frame (void) {  // PJT3
 	/* TODO: Fill this function. */
 	frame->kva = palloc_get_page(PAL_USER);
 	frame->page = NULL;
+
+	// PJT3
+	if (frame->kva == NULL) {
+		free(frame);
+		frame = vm_evict_frame();
+	}
 
 	ASSERT (frame != NULL);
 	ASSERT (frame->page == NULL);
@@ -215,6 +273,12 @@ vm_do_claim_page (struct page *page) {
 	/* Set links */
 	frame->page = page;
 	page->frame = frame;
+
+	// PJT3 Add to frame_list for eviction clock algorithm
+	if (clock_elem != NULL)
+	    list_insert(clock_elem, &frame->elem);  // &frame->elem 헤더 개념?
+	else
+	    list_push_back(&frame_list, &frame->elem);
 
 	/* TODO: Insert page table entry to map page's VA to frame's PA. */
 	struct thread *curr = thread_current();

@@ -47,6 +47,7 @@ int exec (char *file_name);
 
 // PJT3
 static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset);
+static void munmap(void *addr);
 
 // Project 2-4 File Descriptor
 static struct file *find_file_by_fd(int fd);
@@ -158,6 +159,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		break;
 	case SYS_MMAP:  // PJT3
 	    f->R.rax = (uint64_t)mmap((void *)f->R.rdi, (size_t)f->R.rsi, (int)f->R.rdx, (int)f->R.r10, (off_t)f->R.r8);
+		break;
+	case SYS_MUNMAP:
+	    munmap((void *)f->R.rdi);
 		break;
 	default:
 		exit(-1);
@@ -536,10 +540,14 @@ static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset)
 		    return NULL;
 	}
 	struct file *file_obj = find_file_by_fd(fd);
-	if (file_obj == NULL)
+	if (file_obj == NULL || file_obj < 3)
 	    return NULL;
 	if (length == 0)
 	    return NULL;
 	
 	return do_mmap(addr, length, writable, file_obj, offset);
+}
+
+static void munmap(void *addr) {
+	do_munmap(addr);
 }
