@@ -4,6 +4,7 @@
 #include "threads/mmu.h"  // PJT3
 #include "threads/malloc.h"  // PJT3
 #include <string.h>  // PJT3
+#include "vm/file.h"  // PJT3
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -140,21 +141,10 @@ do_munmap (void *addr) {
 	for (struct list_elem *i = list_front(&mmap_file_list); i != list_end(&mmap_file_list); i = list_next(i)) {
 		struct mmap_file_info *mfi = list_entry(i, struct mmap_file_info, elem);
 		if (mfi->start == (uint64_t)addr) {
-			//for (uint64_t j = (uint64_t)addr; j <= mfi->end; j += PGSIZE) {
-				struct page *page = spt_find_page(&thread_current()->spt, (void *)addr);
-				struct file_page *file_page = &page->file;
-				// printf("mfi->end: %p\n", mfi->end);
-				//spt_remove_page(&thread_current()->spt, page);
-
-				if (pml4_is_dirty(curr->pml4, page->va)) {
-					file_seek(file_page->file, file_page->ofs);
-					file_write(file_page->file, page->va, file_page->size);
-					pml4_set_dirty(curr->pml4, page->va, false);
-				}
-
-				pml4_clear_page(curr->pml4, page->va);
-
-			//}
+			for (uint64_t j = (uint64_t)addr; j<= mfi -> end; j += PGSIZE){
+				struct page* page = spt_find_page(&thread_current() -> spt, (void*) j);
+				spt_remove_page(&thread_current()->spt, page);
+			}
 			list_remove(&mfi->elem);
 			free(mfi);
 			return;

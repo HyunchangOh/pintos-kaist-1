@@ -150,10 +150,11 @@ page_fault (struct intr_frame *f) {
 		return;
 #endif
 	
-    if (user) {
-		curr->exit_status = -1;
-		f->cs = SEL_UCSEG;  // ?
-	}
+	exit(-1);
+    // if (user) {
+	// 	curr->exit_status = -1;
+	// 	f->cs = SEL_UCSEG;  // ?
+	// }
 	/* Count page faults. */
 	page_fault_cnt++;
 
@@ -163,7 +164,7 @@ page_fault (struct intr_frame *f) {
 	// 		not_present ? "not present" : "rights violation",
 	// 		write ? "writing" : "reading",
 	// 		user ? "user" : "kernel");
-	kill (f);
+	// kill (f);
 	// exit(-1); // multi-oom and other Project2 test-cases
 }
 

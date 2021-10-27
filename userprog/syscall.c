@@ -120,6 +120,7 @@ syscall_handler (struct intr_frame *f UNUSED) {
 		exit(f->R.rdi);
 		break;
 	case SYS_FORK:
+	    check_address(f->R.rdi);
 		f->R.rax = fork(f->R.rdi, f);
 		break;
 	case SYS_EXEC:
@@ -165,9 +166,9 @@ syscall_handler (struct intr_frame *f UNUSED) {
 	case SYS_MUNMAP:
 	    munmap((void *)f->R.rdi);
 		break;
-	default:
-		exit(-1);
-		break;
+	// default:
+	// 	exit(-1);
+	// 	break;
 	}
 
 	// printf ("system call!\n");
@@ -205,6 +206,9 @@ void check_address(const uint64_t *uaddr)
 	{
 		exit(-1);
 	}
+	struct page *page = spt_find_page(&thread_current()->spt, uaddr);
+	if (page == NULL)
+	    exit(-1);
 }
 
 // void get_argument(void *esp, int *arg , int count)
@@ -254,7 +258,9 @@ bool remove(const char *file)
 int open(const char *file)
 {
 	check_address(file);
+	lock_acquire(&file_rw_lock);
 	struct file *fileobj = filesys_open(file);
+	lock_release(&file_rw_lock);
 
 	if (fileobj == NULL)
 		return -1;
@@ -277,15 +283,23 @@ int filesize(int fd)
 	return file_length(fileobj);
 }
 
+static void check_writable_addr(void *ptr) {
+	struct page *page = spt_find_page(&thread_current()->spt, ptr);
+	if (page == NULL || !page->writable)
+	    exit(-1);
+}
+
 // Reads size bytes from the file open as fd into buffer.
 // Returns the number of bytes actually read (0 at end of file), or -1 if the file could not be read
 int read(int fd, void *buffer, unsigned size)
 {
 	check_address(buffer);
+	check_writable_addr(buffer);
 	int ret;
 	struct thread *cur = thread_current();
 
 	struct file *fileobj = find_file_by_fd(fd);
+	// printf("1111111111 %d\n", fileobj);
 	if (fileobj == NULL)
 		return -1;
 
@@ -316,7 +330,7 @@ int read(int fd, void *buffer, unsigned size)
 	{
 		ret = -1;
 	}
-	else{
+	else if (fileobj > 2) {
 		lock_acquire(&file_rw_lock);
 		ret = file_read(fileobj, buffer, size);
 		lock_release(&file_rw_lock);
@@ -542,14 +556,19 @@ static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset)
 		    return NULL;
 	}
 	struct file *file_obj = find_file_by_fd(fd);
-	if (file_obj == NULL || file_obj < 3)
+	if (file_obj == NULL || file_obj == 1 || file_obj == 2)
 	    return NULL;
 	if (length == 0)
 	    return NULL;
+	lock_acquire(&file_rw_lock);
+	void *target_address = do_mmap(addr, length, writable, file_obj, offset);
+	lock_release(&file_rw_lock);
 	
-	return do_mmap(addr, length, writable, file_obj, offset);
+	return target_address;
 }
 
 static void munmap(void *addr) {
+	lock_acquire(&file_rw_lock);
 	do_munmap(addr);
+	lock_release(&file_rw_lock);
 }
