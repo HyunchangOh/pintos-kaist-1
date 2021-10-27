@@ -119,13 +119,13 @@ anon_swap_out (struct page *page) {
 /* Destroy the anonymous page. PAGE will be freed by the caller. */
 static void
 anon_destroy (struct page *page) {
-	// if (page->frame != NULL) {
-	// 	// list_remove(&page->frame->elem);
-	// 	free(page->frame);
-	// } else {
-	//     struct anon_page *anon_page = &page->anon;
+	if (page->frame != NULL) {
+		list_remove(&page->frame->elem);
+		free(page->frame);
+	} else {
+	    struct anon_page *anon_page = &page->anon;
         
-	// 	// Clear swap table
-	// 	bitmap_set(swap_table, anon_page->swap_slot_idx, false);
-	// }
+		// Clear swap table
+		bitmap_set(swap_table, anon_page->swap_slot_idx, false);
+	}
 }

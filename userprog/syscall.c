@@ -95,6 +95,8 @@ syscall_init (void) {
 void
 syscall_handler (struct intr_frame *f UNUSED) {
 	// TODO: Your implementation goes here.
+	struct thread *curr = thread_current();
+	curr->saved_sp = f->rsp;
 
 	// intr_frame 에서 stack pointer 를 get
 	// stack(esp) 에서 system call num를 get.
