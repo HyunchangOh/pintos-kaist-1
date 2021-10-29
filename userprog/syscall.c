@@ -560,15 +560,15 @@ static void *mmap(void *addr, size_t length, int writable, int fd, off_t offset)
 	    return NULL;
 	if (length == 0)
 	    return NULL;
-	lock_acquire(&file_rw_lock);
+	// lock_acquire(&file_rw_lock);
 	void *target_address = do_mmap(addr, length, writable, file_obj, offset);
-	lock_release(&file_rw_lock);
+	// lock_release(&file_rw_lock);
 	
 	return target_address;
 }
 
 static void munmap(void *addr) {
-	lock_acquire(&file_rw_lock);
+	// lock_acquire(&file_rw_lock);
 	do_munmap(addr);
-	lock_release(&file_rw_lock);
+	// lock_release(&file_rw_lock);
 }
