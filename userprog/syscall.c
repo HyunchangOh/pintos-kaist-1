@@ -244,7 +244,10 @@ bool create(const char *file, unsigned initial_size)
 	/* 파일 이름과 크기에 해당하는 파일 생성 */
 	/* 파일 생성 성공 시 true 반환, 실패 시 false 반환 */
 	check_address(file);
-	return filesys_create(file, initial_size);
+	lock_acquire(&file_rw_lock);
+	bool succ = filesys_create(file, initial_size);
+	lock_release(&file_rw_lock);
+	return succ;
 }
 
 bool remove(const char *file)
@@ -252,7 +255,10 @@ bool remove(const char *file)
 	/* 파일 이름에 해당하는 파일을 제거 */
 	/* 파일 제거 성공 시 true 반환, 실패 시 false 반환 */
 	check_address(file);
-	return filesys_remove(file);
+	lock_acquire(&file_rw_lock);
+	bool succ = filesys_remove(file);
+    lock_release(&file_rw_lock);
+	return succ;
 }
 
 int open(const char *file)
@@ -280,7 +286,10 @@ int filesize(int fd)
 	struct file *fileobj = find_file_by_fd(fd);
 	if (fileobj == NULL)
 		return -1;
-	return file_length(fileobj);
+	lock_acquire(&file_rw_lock);
+	int length = file_length(fileobj);
+	lock_release(&file_rw_lock);
+	return length;
 }
 
 static void check_writable_addr(void *ptr) {
@@ -384,19 +393,29 @@ int write(int fd, const void *buffer, unsigned size)
 // expressed in bytes from the beginning of the file (Thus, a position of 0 is the file's start).
 void seek(int fd, unsigned position)
 {
-	struct file *fileobj = find_file_by_fd(fd);
-	if (fileobj <= 2)
-		return;
-	fileobj->pos = position;	
+	lock_acquire(&file_rw_lock);
+    struct file *fileobj = find_file_by_fd(fd);
+    if (fileobj <= 2) {
+        lock_release(&file_rw_lock);
+        return;
+    }
+    fileobj->pos = position;
+    lock_release(&file_rw_lock);
 }
 
 // Returns the position of the next byte to be read or written in open file fd, expressed in bytes from the beginning of the file.
 unsigned tell(int fd)
 {
-	struct file *fileobj = find_file_by_fd(fd);
-	if (fileobj <= 2)
-		return;
-	return file_tell(fileobj);
+	unsigned position;
+    lock_acquire(&file_rw_lock);
+    struct file *fileobj = find_file_by_fd(fd);
+    if (fileobj <= 2) {
+        lock_release(&file_rw_lock);
+        return;
+    }
+    file_tell(fileobj);
+    lock_release(&file_rw_lock);
+    return position;
 }
 
 void close(int fd)

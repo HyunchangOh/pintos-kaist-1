@@ -5,6 +5,7 @@
 #include "threads/malloc.h"  // PJT3
 #include <string.h>  // PJT3
 #include "vm/file.h"  // PJT3
+#include "threads/vaddr.h"
 
 static bool file_backed_swap_in (struct page *page, void *kva);
 static bool file_backed_swap_out (struct page *page);
@@ -85,7 +86,7 @@ file_backed_destroy (struct page *page) {
 	struct file_page *file_page UNUSED = &page->file;
 	// if dirty, write back to file
 	if (pml4_is_dirty(thread_current()->pml4, page->va)) {
-		file_seek(file_page->file, file_page->size);
+		file_seek(file_page->file, file_page->ofs);
 		file_write(file_page->file, page->va, file_page->size);
 	}
 	file_close(file_page->file);
@@ -128,7 +129,7 @@ do_mmap (void *addr, size_t length, int writable,
 	mfi->start = (uint64_t)addr;
 	mfi->end = (uint64_t)pg_round_down((uint64_t)addr + length - 1);
 	list_push_back(&mmap_file_list, &mfi->elem);
-	// printf("%p\n", addr);
+	// printf("%s\n", addr);
 	return addr;
 }
 

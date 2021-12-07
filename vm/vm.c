@@ -210,8 +210,11 @@ vm_stack_growth (void *addr UNUSED) {
 	    PANIC("Stack limit exceeded!\n");  // 1MB
 
 	// Alloc page from tested region to previous claimed stack page.
+	// printf("2222222222          %d\n", req_stack_size / PGSIZE);
 	void *growing_stack_bottom = stack_bottom;
-	if ((uintptr_t) growing_stack_bottom < USER_STACK && vm_alloc_page(VM_ANON | VM_MARKER_0, growing_stack_bottom, true)) {
+	// int i = 1;
+	while ((uintptr_t) growing_stack_bottom < USER_STACK && vm_alloc_page(VM_ANON | VM_MARKER_0, growing_stack_bottom, true)) {
+		// printf("%d\n", i++);
 		growing_stack_bottom += PGSIZE;
 	};
 	vm_claim_page(stack_bottom);
